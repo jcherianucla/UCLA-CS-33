@@ -1,0 +1,36 @@
+Problem 2.64:
+
+int any_odd_one(unsigned x)
+{
+	return ((x & 0xAAAAAAAA) != 0);	//We use 1010101… as a mask reading right to left
+}
+
+Problem 2.71:
+A.) The main problem with the function as of now is that after executing the number returned is not the same as the signed value of the byte because of the conversion from 8bit to 32bit. Therefore in order to correct the code we need to figure out how to represent the original 8bit signed int value to its extended 32bit value.
+
+B.) The fixed version is as follows:
+
+int xbyte(packed_t word, int bytenum)
+{
+	return (word << (3-bytenum) << 3)) >> 24;	//24 or 3 bytes so that it shifts the relevant byte
+}
+
+Problem 2.72:
+
+A.) Since sizeof returns size_t which is an unsigned type, we notice that maxbytes-sizeof(val) undergoes unsigned arithmetic and so since it can never evaluate to below 0, the result will wrap around giving us a very large result when maxbytes < sizeof(val), and thus always passes the condition of being >= 0.
+B.) Assuming maxbytes will always be > 0 then we need not worry about the two's complement of maxbytes changing when cast to unsigned. Therefore we can change the conditional to the following:
+
+(maxbytes > 0 && maxbytes >= sizeof(val))
+
+Problem 2.82:
+A.) The following conditional doesnt always yields 1 (i.e. Can be FALSE) (x < y) == (-x > -y). The simplest example that comes to mind is when x and y are both equal to 0. We also notice the example when x = TMIN (signed minimum), and that its negation results in the exact same value which cannot be bigger than y by definition.
+
+B.) The conditional ((x+y) << 4) + y - x == 17*y+15*x always yields 1 (i.e. Always TRUE). We can show this mathematically by showing LHS = RHS. We must realise that a left shift of k is equal to a multiplication by 2^k.
+((x+y)<<4) +y -x = ((x+y)*16) +y -x = 16*x + 16*y +y -x = 17*y + 15*x
+
+C.) The conditional ~x+~y+1 == ~(x+y) always yields 1. We can show this mathematically by showing LHS = RHS. We must realise that ~x = -1-x.
+~x + ~y +1 = (-x-1) + (-y-1) + 1 = -1-(x+y) = ~(x+y)
+
+D.)The conditional (ux-uy) == -(unsigned)(y-x) always yields 1. We see this because the LHS represents an unsigned arithmetic operation, while the right hand signed represents a signed arithmetic casted to unsigned, but at the bottom of it all, the bit representations remain the same which in turn means that the values will be the same when made into unsigned.
+
+E.) The conditional ((x>>2)<<2) <= x always yields 1 (i.e. Always TRUE). We note that for any sequence of bits where any of the most significant 2 bits and the least significant 2 bits are not one, then the right arithmetic shift followed by the left arithmetic shift will always yield the same result as x. In the case where the 2 most significant bits are 1, then the shifts will result in the same expression as well because it is an arithmetic right shift. Any other case will result in a lower number than the original because we either drop of some of the more significant bits (or least significant bits) or add more 1's at the left most end of the bit vector resulting in a more negative number, which means the final result is always smaller than the original.

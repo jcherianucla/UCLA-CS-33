@@ -1,0 +1,14 @@
+Problem 3.60
+A.) %rdi holds x initially but is then moved to %r8;
+n is initially in %esi but is then moved to %ecx;
+result is stored in %rax and the mask is stored in %rdx.
+
+B.)Result is initially set to 0, while Mask is set to 1.
+
+C.)mask != 0; mask = mask << (n&0xFF)
+
+D.)Mask is left shifted by the lower 8 bits of n i.e. mask = mask << (n&0xFF)
+
+E.) result |= (x&mask);
+
+

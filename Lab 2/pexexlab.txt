@@ -1,0 +1,61 @@
+Name: Jahan Kuruvilla Cherian
+UID: 104436427
+Email: jcherian@ucla.edu
+
+CS33 Lec 1
+Prof: Eggert
+TA: Alex Wood
+File: pexexlab.txt
+Description: Note down how you took the trace, what commands you used, why you used them and preferrably how you did so.
+
+
+PEXEXLAB.TXT
+
+The aim of this lab was to become more familiar with using gdb and noticing how it handles signed overflow due to multiplication through walking through the machine code for the Ftimes function, which relied largely on the arith_driver function located in data.c in the respective folder. Every now and then we would also jump to lisp.h when stepping into certain functions within arith_driver to do some basic calculations. I relied heavily on the commands listed below and didnt use any other commands to perform the trace.
+
+$ gdb ~eggert/bin64/bin/emacs-24.5
+
+This command launches gdb in the folder with the latest version of emacs. We use this command to actually enter the debugger and use the Elisp language of the emacs compiler.
+
+(gdb) break Ftimes
+
+We set a breakpoint at the function Ftimes which is used to multiply numbers. We do this so that from this point onwards we can trace through the machine code for Ftimes and try to understand what actually happens.
+
+(gdb) r -batch -eval '(print (* 6997 -4398042316799 179))'
+
+This line runs the function to multiply and display the quotient of the three numbers specified. Doing this will lead the compiler to eventually run into the Ftimes function, upon where control is handed over to gdb since we previously set a breakpoint there.
+
+(gdb) set disassemble-next-line on
+
+This command is just used to make stepping through each instruction easier to read as it gives us the disassembled machine code at the same time as stepping. I used this command at the very start of the lab so that I could use its functionality from the beginning itself, and heavily relied on this command's effects.
+
+(gdb) si
+
+This command, in conjunction with the disassemble-next-line on, steps through each line of machine instruction which also steps into functions when they appear, and gives a disassembled version of the machine code for that line of source code. This also gave us the hex representation of the machine code so we could see how many bytes each machine instruction was. It also gave us the path and line number in the source code anytime we jumped to a new line or function.
+
+(gdb) info registers
+
+This was an extremely useful gdb instruction I used to get the state of all the registers after each machine instruction was executed, so I could view the updated values within the registers after a mov, add, sub, lea, xor, and or any other command that updated the values in the registers. It displayed both the hex version of the value in the register along with the decimal representation.
+
+(gdb) info registers $r__
+
+This gives us the information of whats in a specific register specified after the $ symbol, instead of looking through all the registers. I did not use this command as often because I always liked to look through all the registers simultaneously through "info registers" and see what got updated and what whether the value said register held was changed correctly.
+
+(gdb) disas
+
+Every now and then we would use the simple disassemble instruction which just dumps out the disassembled version of the machine code with an arrow pointing to the machine line we're at in the debugging process. This version doesnt give us the hex representation of the machine code.
+
+(gdb) disas /m
+
+This also gave me a dump of the machine instructions through which gdb was running through and also gave me an arrow pointing to the current position of gdb, but in addition also gave us the corresponding line in the source code the machine instruction referred to. However this sometimes proved to cause problems since when the function would call some other function from lisp.h instead of data.c, we wouldnt be able to find the gdb pointer and would be lost as to where we actually were in the mahcine code. So I used this very rarely.
+
+The general pattern for my trace was as follows (once inside the linux server):
+1.) gdb ~eggert/bin64/bin/emacs-24.5
+2.) break Ftimes
+3.) r -batch -eval '(print (* 6997 -4398042316799 179))'
+4.) set disassemble-next-line on
+5.) disas
+6.) si
+7.) info registers
+
+Repeat commands 6 and 7 every time until we hit the end of the arith_driver function which also marked the end of the Ftimes function. However use info registers only when necessary, i.e. We dont need to use it for any test, cmp machine instructions since those dont actually update any registers except for rflags, which we werent too concerned with for this lab.

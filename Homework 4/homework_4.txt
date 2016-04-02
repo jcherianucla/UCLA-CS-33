@@ -1,0 +1,62 @@
+Name: Jahan Kuruvilla Cherian
+UID: 104436427
+Email: jcherian@ucla.edu
+
+CS 33 Lec 1
+Prof: Eggert
+TA: Alex Wood
+File: answers.txt
+
+Problem 2.89 - 3rd Edition
+
+A.) (float) x == (float) dx 
+FALSE: The basic principle behind this comes from the idea that when downcasting from an int to a float will cause rounding errors while, downcasting from a double to a float can overflow to +/- INFINITY or give rounding errors. Therefore if we for example use x = TMAX wherein we will get the special value NaN and NaN when compared to anything including itself will return 0 (false).
+
+B.) dx - dy = (double) (x-y)
+FALSE: If we have x = INT_MAX and y = -3 or any other negative integer, then when performing x - y we get x + y. What this implies is that on the RHS we can overflow when operating on integers, and then we cast it up to a double but the mathematical result is itself incorrect. However on the LHS we have more room in a double than we do in an integer and so with the same numbers, we wont get an overflow and instead get the correct result which will not be the same as RHS.
+
+C.) (dx + dy) + dz == dx + (dy + dz) 
+TRUE: An initial thought would be that because floating point addition associativity has its issues, the statement above would be false. However we have to keep in mind that dx, dy and dz are all integers casted to a double which essentially means that the double can safely preserve the precision of the original numbers since it has more bits. Also because of such large room in the double, any form of addition will successfully compute because there will be no rounding error in any case since the 32 bits of int can fit in the 52 bits of the double’s fractional part. Thereby the typical floating point addition associativity issues that arise due to rounding errors will not come about in this statement.
+
+D.) (dx * dy) * dz == dx * (dy * dz) 
+FALSE: When it comes to floating point arithmetic associativity issues, the key thing to remember is that we can only hold old numbered bits to an exact precision upto 2^53 - 1, because a double can hold 52 to bits of fractional bits in a normalized setting. As such if we have the multiplication of two very large numbers that exceed these bounds then we could potentially overflow, and more than not, cause rounding errors. We can take the example of if dx = 2^30 - 1; dy = 2^24 and dz = 2^-1. The LHS will give us a value which will be around 2^54 initially, but because this passes the maximum odd number we can represent, it will produce a rounding error. However on the RHS we will first get 2^23 and that will then be multiplied by 2^30 - 1 which will not give us a rounding error as it is still in the precise odd number representable range.
+
+E.) dx/dx == dz/dz 
+FALSE: One such example would be if dx = +0.0, while dz is some nonzero number. Then by the IEEE 754 standard, dx/dx, which is analogous to +0.0/+0.0 evaluates to NaN while dz/dz will evaluate to a rounded version of 1.0. NaN when compared to any value will always return false.
+
+Problem 2.90 - 3rd Edition
+
+float fpwr2(int x)
+{
+    /* Result exponent and fraction */
+    unsigned exp, frac;
+    unsigned u;
+
+	if (x < -149) {
+	/* Too small. Return 0.0 */ 
+	
+	exp = 0;
+	frac = 0;
+	} else if (x < -126) { 
+	/* Denormalized result */
+	
+	exp = 0;
+	frac = 1 << (x + 149); 
+	} else if (x < 255) {
+	Homework Problems 131
+    /* Normalized result. */
+	
+	exp = x + 127;
+	frac = 0; 
+	} else {
+    /* Too big.  Return +oo */
+	
+	exp = 255;
+	frac = 0; 
+	}
+    
+    /* Pack exp and frac into 32 bits */
+    u = exp << 23 | frac;
+    /* Return as float */
+    return u2f(u);
+}

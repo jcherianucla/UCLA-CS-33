@@ -1,0 +1,37 @@
+Name: Jahan Kuruvilla Cherian
+UID: 104436427
+Email: jcherian@ucla.edu
+
+CS 33 Lec 1
+Prof: Eggert
+TA: Alex Wood
+File: answers.txt
+Description: Answer the additional questions posed in the PEXEX Lab description.
+
+1.) The issue comes from the way Emacs stores information, which it does by converting every type into an ELISPOBJECT which is 64 bits with 2 bits set to a specialised tag. This leaves only 62 bits worth of information space. The way Emacs handles this is by doing an arithmetic right shift by 2 bits each time it takes in an integer value which it converts by calling XINT. We see the sar $0x2,%rdi does this right shifting, and then carries through with the multiplication. But the issue comes from the line:
+
+0x00000000005436af <arith_driver+431>lisp.h:700	lea    0x0(,%rbp,4),%rax
+
+Which is essentially left shifting by two to put it back into an ELISPOBJECT which will result in an overflow. It is the constant right shifting and left shifting that results in us losing information. We do not see what happens after this left shift, but based on the source code for data.c we see that Emacs will right shift this number back, essentially clearing out the lower two bits to store its tags in by masking with INTMASK because we have caused an overflow.
+
+2.) If we go into the Emacs source code in data.c we notice that most-positive-fixnum is defined on line 3678 of the C source code for data.c as follows:
+3678	DEFVAR_LISP ("most-positive-fixnum", Vmost_positive_fixnum,
+3679                doc: /* The largest value that is representable in a Lisp integer.  */);
+3680   Vmost_positive_fixnum = make_number (MOST_POSITIVE_FIXNUM);
+3681   XSYMBOL (intern_c_string ("most-positive-fixnum"))->constant = 1;
+
+and it essentially references MOST_POSITIVE_FIXNUM which can be located in lisp.h. We then notice that in lisp.h on line 692 MOST_POSITIVE_FIXNUM is defined as follows:
+
+#define MOST_POSITIVE_FIXNUM (EMACS_INT_MAX >> INTTYPEBITS)
+INTTYPEBITS is essentially set to 2 because ints are represented as 62 bit numbers with a 2 bit tag in ELisp which then means it has to shift to extend the range for holding the integer value.
+This essentially computes the value of (2^63 - 1) >> 2 which evaluates to the number 2305843009213693951. This is why the command emacs -batch -eval '(print most-positive-fixnum)' will output 2305843009213693951.
+
+3.) If we look at most-positive-fixnum, it is basically the following hexadecimal value: 0x7FFFFFFFFFFFFFFF, and when multiplied with itself should give the bit vector 1100000000000000000000000000000000000000000000000000000000000001 in a 64 bit representation with overflow occurring and fitting into a 64 bit quantity. However Emacs when printing this result needs to convert the result to an ELISPOBJECT which it does so by shfiting left by two and then right shifting it back which clears out so that it can store the 62 bits of information and 2 bits as a tag. Therefore whats left is 00000000000000000000000000000000000000000000000000000000000001 which is the lisp object that gets outputted when print is called in emacs.
+
+4.) The current Emacs version of integer arithmetic essentially checks for overflow and performs respective intructions on whether it detects overflow or not. Applying -fsanitized=undefined to the gcc command will just generate extra machine code to check for overflow by performing jumps based on the Overflow Flag to the ubsan functions inbuilt into gcc. Upon noticing overflow it will output a runtime error and continue execution of arith_driver which will again check for overflow which seems redundant because we are checking for overflow based on the same arithmetic operations twice, once with fsanitize and once again with line 2638. It will not produce any errors, but will make the code more inefficient.
+
+5.) If we use -fwrapv, we arent going to do/dont need to do the overflow checks at all because running it under fwrapv will automatically allow for overlow to take place and simply just wrap around the result of an overflow. This will not produce any compilation/runtime errors or any error with the machine code at all but will not output the mathematically correct result because overflow will occur and wrap around the result.
+
+6.) The way Emacs is currently handling overflows is by first checking for it by looking at each argument, before the operation is carried through. This will generate several lines of machine code that checks various flags for each and every argument which amounts to about 15 lines of machine code per overflow check. This can take a lot of time and machine lines to do for several arguments. Therefore if we do choose to use -fwrapv then we can completely get rid of the INT_MULTIPLY_OVERFLOW check and just do accum *= next; without the extra ~7 lines of source code for the check of overflow. This could be applied to all the arithmetic operations for arith_driver in Emacs if we always compile under -fwrapv, where we just perform the computation without checking for overflow for each number beforehand.
+
+7.) The efficiency increase as stated above arent too significant for a few multiplicands; however, if the number of multiplicands was large enough then we would begin to see a difference in efficiency, since the current Emacs execution will create several lines of unnecessary machine code, that could go into the hundreds, that it will have to go through before actually computing the result itself. Therefore if we always compile under fwrapv then the Emacs execution will have to be changed to remove the check for overflow.

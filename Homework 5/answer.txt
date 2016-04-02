@@ -1,0 +1,19 @@
+Name: Jahan Kuruvilla Cherian
+UID: 104436427
+Email: jcherian@ucla.edu
+
+CS 33 Lec 1
+Prof: Eggert
+TA: Alex Wood
+File: answer.txt
+Description: My answers to Questions 12.18 and 12.24 from the 3rd Edition of Computer Systems.
+
+12.18
+
+A. This trajectory is unsafe because if we follow the path then at the point of L_1 we see we enter the unsafe region.
+B. This trajectory is safe.
+C. This trajectory is unsafe because if we follow the path then at the point of L_2 we see we enter the unsafe region.
+
+12.24
+
+We notice that all the functions in the RIO I/O package pass in a pointer to their functions wherein in the best case scenario would be that the functions are implicitly reentrant, and it is up to the caller to make sure that the passed in void pointer is not accessing the same storage. The specific pointer parameters I am referring to are void* usrbuff and rio_t *rp. Therefore because it is upto the caller to ensure the pointer isnt accessing the same location in memory, the functions in the RIO I/O package are technically implicitly reentrant. However, in the most general cases of when a user uses this package, the likelihood of them reading and writing to the same buffer they create is very high and therefore all the functions would most likely point to the same location in memory (as per the users choice) and would therefore violate reentrancy. As stated however this is a choice the user makes and thereby the functions themselves are implicitly reentrant, but their uses may not be.

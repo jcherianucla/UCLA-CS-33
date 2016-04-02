@@ -1,0 +1,94 @@
+Problem 3.67 - 3rd Edition
+
+A. Stack frame for eval before it calls process. Note eval extends from %rbp to %rsp, which is essentially 104 bytes. The space underneath that is just extra space drawn.
+	high(est) address
+ -----------------------  <--- %rbp
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|-----------------------| <--- %rsp + 32
+|	 		z			|
+|-----------------------| <--- %rsp + 24
+|	 		&z			|
+|-----------------------| <--- %rsp + 16
+|	 		y			|
+|-----------------------| <--- %rsp + 8
+|			x 			|
+|-----------------------| <--- %rsp
+|	 					|
+|	 					|
+ -----------------------
+ 	low(est) address
+
+B. In the C code we see that eval passes in a strA s, while in Assembly we notice that the instruction "leaq 64(%rsp), %rdi" essentially saves into rdi the address in eval's stack frame from where process will build on. We see that the only thing that process uses to actually refer to strA s is the %rsp pointer with its respective offsets. Therefore the %rsp pointer is passed into process by eval.
+
+C. As mentioned above, process uses the %rsp pointer with its different offsets to access the values in strA s. It must be noted that the instruction "call process" pushes the %rsp pointer down by 8 bytes for the Return Address. Therefore: "[line 5] movq 16(%rsp), %rcx" accesses 'y' from strA s which corresponds to s.a[1]; "[line 7] movq 8(%rsp), %rcx" accesses 'x' from strA s which corresponds to s.a[0]; and finally "[line 9] movq %rdx, 16(%rdi)" moves z into 16 bytes above the base of process where %rdx was holding the value of z from [line 3] and [line 4] in process.
+
+D. After accessing strA s variables we see the result is stored in %rcx for s.a[1] and s.a[0], while *s.p is saved in %rdx and these are then moved into (%rdi), 8(%rdi) and 16(%rdi) respectively which corresponds to the location in eval's stack that is allocated for strB r which is 64 bytes above %rsp.
+
+E. We see that strA s refers to %rsp + 8 to %rsp + 32 while strB r refers to %rsp +64 to %rsp + 88 in eval's stack frame. We notice an empty chunk of memory between the two structures that corresponds to 32 bytes, which can be explained due to the fact of alignmnet needed for the structures. We see eval accesses the information in the strB r by offseting the %rsp by the respected offsets to gain access to r.u[1], r.u[0] and r.q. Note that 'y' in the higher address corresponds to r.u[1], the 'x' in the higher address corresponds to r.u[0] and the 'z' in the higher address coresponds to r.q.
+
+	high(est) address
+ -----------------------  <--- %rbp
+|	 					|
+|	 					|
+|	 					|
+|-----------------------| <--- %rsp + 88
+|	 		z			|
+|-----------------------| <--- %rsp + 80
+|	 		x			|
+|-----------------------| <--- %rsp + 72
+|	 		y 			|
+|-----------------------| <--- %rsp + 64
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|	 					|
+|-----------------------|
+|	 		z			|
+|-----------------------| <--- %rsp + 32
+|	 		&z			|
+|-----------------------| <--- %rsp + 24 
+|	 		y			|
+|-----------------------| <--- %rsp + 16
+|			x 			|
+|-----------------------| <--- %rsp + 8
+|	 	RET ADDR		|
+|-----------------------| <--- %rsp
+ -----------------------
+ 	low(est) address
+
+F. We notice that passing in a structure as an argument into a function essentially copies all its members which thus ends up taking more space in the stack. We notice that in eval, after the call to process the %rax register holds the value in 72(%rsp) which corresponds to r.u[1] and then we add onto %rax the other values that exist in the frame of strB r. We can discern from this that this acts almost like a pointer accessing the function results one by one.
+
+
+Problem 3.70 - 3rd Edition
+
+A.  e1.p = 0 bytes offset
+	e1.y = 8 bytes offset
+	e2.x = 0 bytes offset (because it is stored in a union, the two structs start at the same offset)
+	e2.next = 8 bytes offset (because a pointer in x86-64 is always 8 bytes)
+
+	0		  8  		16		
+	|-------------------|
+    |e1.p	  |    e1.y	|
+    |e2.x	  |	 e2.next|
+    |-------------------|
+
+B. 16 bytes
+
+C. void proc(union ele *up)
+	{
+		up->e2.next->e1.y = *(up->e2.next->e1.p) - up->e2.x;
+	}

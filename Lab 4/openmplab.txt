@@ -1,0 +1,109 @@
+Name: Jahan Kuruvilla Cherian
+UID: 104436427
+Email: jcherian@ucla.edu
+
+CS 33 Lec 1
+Prof: Eggert
+TA: Alex Wood
+File: openmplab.txt
+Description: A record and explanation of what I did during the OpenMP lab.
+
+We begin the lab by downloading the OpenMP zip file, unzipping it and going into the directory within the Linux 09 server. We then run a few commands as listed below to see how fast the func.c program runs and look at it using GPROF to see where we can make significant changes to get the highest speed up factors within func.c.
+
+$ make seq //Sequentially makes the executable for the program
+$ ./seq 
+FUNC TIME : 0.474919  //Tells us the function's time
+TOTAL TIME : 2.702741 //Overall program time
+
+Now we intend on making the program with GPROF enabled to see where we can improve the function to run faster. Note that making it with GPROF will make the function and over program time slower, but the relative speeds remain constant.
+
+$ make seq GPROF=1
+$ ./seq
+FUNC TIME : 0.540280
+TOTAL TIME : 2.541794
+$ gprof seq | less
+
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+ 64.24      0.34     0.34       15    22.70    23.71  func1
+ 15.11      0.42     0.08  5177344     0.00     0.00  rand2
+  5.67      0.45     0.03   491520     0.00     0.00  findIndexBin
+  5.67      0.48     0.03        1    30.04    94.94  addSeed
+  3.78      0.50     0.02                             sequence
+  1.89      0.51     0.01       15     0.67     2.67  func5
+  1.89      0.52     0.01        1    10.01    10.01  imdilateDisk
+  1.89      0.53     0.01                             filter
+  0.00      0.53     0.00   983042     0.00     0.00  round
+  0.00      0.53     0.00       16     0.00     0.00  dilateMatrix
+  0.00      0.53     0.00       15     0.00     0.00  func2
+  0.00      0.53     0.00       15     0.00     0.00  func3
+  0.00      0.53     0.00       15     0.00     0.00  func4
+  0.00      0.53     0.00       15     0.00     0.00  rand1
+  0.00      0.53     0.00        2     0.00     0.00  get_time
+  0.00      0.53     0.00        1     0.00     0.00  elapsed_time
+  0.00      0.53     0.00        1     0.00     0.00  fillMatrix
+  0.00      0.53     0.00        1     0.00     0.00  func0
+
+Based off this profile we notice that func1 takes a significantly higher amount of time than any other function.
+
+So we open up func.c and add code to take advantage of the 32 processors of the linux 09 server to parallelize code within the func1. We begin by parallelizing the for loops but realizing that for the nested for loop, all we need to do is instantiate parallelism only once outside the outermost for loop and then make some of the variables private for multiple usages within the code block. This parallelization alone gives us ~11x speedup.
+
+We then also for the sake of extra speedup apply parallelization to other functions as well using reduction where we see any accumulators that we wish to parallelize.
+
+After applying all the relevant changes, we apply the process again but this time using omp to see the result of our parallelized func.c.
+$ make omp
+$ ./omp
+FUNC TIME : 0.038208
+TOTAL TIME : 2.246566
+
+We see that we have reached a function speedup of nearly a factor of ~11x. To ensure that we have made relative speedups to the functions we apply gprof.
+
+$ make omp GPROF=1
+$ ./omp
+FUNC TIME : 0.138008
+TOTAL TIME : 2.194319
+$ gprof omp | less
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+ 59.49      0.41     0.41                             frame_dummy
+ 23.21      0.57     0.16  4222856     0.00     0.00  rand2
+  5.80      0.61     0.04    10313     0.00     0.00  findIndexBin
+  5.80      0.65     0.04        1    40.04   199.14  addSeed
+  2.90      0.67     0.02                             filter
+  1.45      0.68     0.01        1    10.01    10.01  imdilateDisk
+  1.45      0.69     0.01                             sequence
+  0.00      0.69     0.00    43684     0.00     0.00  round
+  0.00      0.69     0.00       16     0.00     0.00  dilateMatrix
+  0.00      0.69     0.00       15     0.00     0.00  func1
+  0.00      0.69     0.00       15     0.00     0.00  func2
+  0.00      0.69     0.00       15     0.00     0.00  func3
+  0.00      0.69     0.00       15     0.00     0.00  func4
+  0.00      0.69     0.00       15     0.00     0.00  func5
+  0.00      0.69     0.00       15     0.00     0.00  rand1
+  0.00      0.69     0.00        2     0.00     0.00  get_time
+  0.00      0.69     0.00        1     0.00     0.00  elapsed_time
+  0.00      0.69     0.00        1     0.00     0.00  fillMatrix
+
+We now see that the functions are no longer the main bottlenecks of the program.
+We must also check that while using OpenMP, we never had a case where we didnt free memory. We must also check that our modified version of func.c produces the correct output. We do this with the following lines:
+
+$ make check
+gcc -o omp  -O3 -fopenmp func.c  main.c filter.c util.c -lm
+cp omp filter
+./filter
+FUNC TIME : 0.040953
+TOTAL TIME : 2.209451
+diff --brief correct.txt output.txt //Suggests that the files are the same and thus the program had the correct output.
+
+To check for memory leaks we type in the following commands.
+$ make omp MTRACE=1
+$ ./omp
+$ make checkmem
+
+We get a very large output that eventually says Memory Not Freed, but we ignore this case and since we never specifically allocated any memory we are not in danger of memory leaks pertaining to the specifications of this project.

